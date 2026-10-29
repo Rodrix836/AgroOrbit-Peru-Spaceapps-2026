@@ -27,6 +27,8 @@ class NasaObservation(Base):
     dataset_version: Mapped[str] = mapped_column(
         String(40), nullable=False, default="unspecified", server_default="unspecified"
     )
+    collection_concept_id: Mapped[str | None] = mapped_column(String)
+    grid_cell_key: Mapped[str | None] = mapped_column(String)
     variable: Mapped[str] = mapped_column(String(80), nullable=False)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     value: Mapped[float] = mapped_column(Float, nullable=False)
