@@ -36,3 +36,8 @@ POWER_PARAMETERS = (
 )
 
 settings = Settings()
+
+# Constantes de compatibilidad con versiones anteriores del servicio
+POWER_BASE_URL = settings.nasa_power_base_url
+POWER_COMMUNITY = settings.nasa_power_community
+POWER_TIMEOUT_SECONDS = settings.nasa_power_timeout
