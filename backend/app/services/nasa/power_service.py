@@ -4,12 +4,7 @@ from typing import Any
 
 import httpx
 
-from app.core.config import (
-    POWER_BASE_URL,
-    POWER_COMMUNITY,
-    POWER_PARAMETERS,
-    POWER_TIMEOUT_SECONDS,
-)
+from app.core.config import POWER_PARAMETERS, settings
 
 
 class PowerServiceError(Exception):
@@ -30,7 +25,7 @@ async def get_daily_power_data(
 
     params = {
         "parameters": ",".join(POWER_PARAMETERS),
-        "community": POWER_COMMUNITY,
+        "community": settings.nasa_power_community,
         "latitude": latitude,
         "longitude": longitude,
         "start": start_date,
@@ -39,8 +34,8 @@ async def get_daily_power_data(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=POWER_TIMEOUT_SECONDS) as client:
-            response = await client.get(POWER_BASE_URL, params=params)
+        async with httpx.AsyncClient(timeout=settings.nasa_power_timeout) as client:
+            response = await client.get(settings.nasa_power_base_url, params=params)
             response.raise_for_status()
     except httpx.TimeoutException as exc:
         raise PowerServiceError(
