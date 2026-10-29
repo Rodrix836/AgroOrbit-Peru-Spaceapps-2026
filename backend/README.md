@@ -47,7 +47,7 @@ Desde la carpeta `backend/` del repositorio, crea un entorno virtual e instala l
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements.txt
+python -m pip install -e .
 ```
 
 En macOS o Linux, activa el entorno con `source .venv/bin/activate`.
@@ -127,6 +127,18 @@ Se solicitan `T2M`, `T2M_MAX`, `T2M_MIN`, `PRECTOTCORR`, `RH2M`, `WS10M` y `ALLS
 Los parámetros inválidos reciben HTTP 422. Si NASA POWER falla, la API informa el código recibido o distingue fallas de conexión y tiempo de espera.
 
 ## Pruebas
+
+La instalación editable anterior registra el paquete `app` en el entorno virtual,
+por lo que sus imports también funcionan desde la raíz del repositorio.
+En VS Code selecciona `backend/.venv/Scripts/python.exe` como intérprete
+(en Linux/macOS, `backend/.venv/bin/python`). La configuración
+`pyrightconfig.json` incluye las rutas de aplicación y pruebas.
+
+Desde la raíz, puedes comprobar específicamente el flujo API con:
+
+```powershell
+backend/.venv/Scripts/python -m unittest discover -s backend/tests -p test_api_flow.py -v
+```
 
 Desde `backend/`, con las dependencias instaladas, ejecuta:
 
