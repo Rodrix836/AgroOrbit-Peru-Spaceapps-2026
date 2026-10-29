@@ -16,13 +16,19 @@ from app.database.models.nasa_observation import NasaObservation
 def normalize_power_payload(payload: dict[str, Any], plot_id: UUID) -> tuple[list[dict], int]:
     header = payload.get("header", {})
     metadata = payload.get("parameters", {})
-    series = payload["properties"]["parameter"]
-    if not isinstance(header, dict) or not isinstance(metadata, dict):
-        raise ExternalServiceError("Faltan metadatos de NASA POWER.")
+    properties = payload.get("properties", {})
+    series = properties.get("parameter") if isinstance(properties, dict) else None
+    if not isinstance(header, dict) or not isinstance(metadata, dict) or not isinstance(series, dict):
+        raise ExternalServiceError("Faltan metadatos o series de NASA POWER.")
     api = header.get("api", {})
     api_version = api.get("version") if isinstance(api, dict) else None
     dataset_version = f"api-{api_version}" if api_version else "unspecified"
     fill_value = header.get("fill_value")
+    try:
+        fill_val_float = float(fill_value) if fill_value is not None else None
+    except (ValueError, TypeError):
+        fill_val_float = None
+
     rows: list[dict] = []
     missing = 0
 
@@ -34,11 +40,20 @@ def normalize_power_payload(payload: dict[str, Any], plot_id: UUID) -> tuple[lis
         if not isinstance(dates, dict):
             raise ExternalServiceError(f"NASA POWER devolvió una serie inválida: {variable}.")
         for day, raw_value in dates.items():
+            is_fill = (
+                (fill_value is not None and raw_value == fill_value)
+                or (
+                    fill_val_float is not None
+                    and isinstance(raw_value, (int, float))
+                    and not isinstance(raw_value, bool)
+                    and math.isclose(float(raw_value), fill_val_float, rel_tol=1e-5)
+                )
+            )
             if (
                 not isinstance(raw_value, (int, float))
                 or isinstance(raw_value, bool)
                 or not math.isfinite(raw_value)
-                or raw_value == fill_value
+                or is_fill
             ):
                 missing += 1
                 continue
@@ -60,6 +75,9 @@ def normalize_power_payload(payload: dict[str, Any], plot_id: UUID) -> tuple[lis
 
 def save_observations(session: Session, rows: list[dict]) -> int:
     """Inserta sin repetir la clave única, incluso ante solicitudes concurrentes."""
+    if not rows:
+        return 0
+
     dialect = session.get_bind().dialect.name
     if dialect == "postgresql":
         insert = pg_insert
