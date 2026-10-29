@@ -22,7 +22,7 @@ backend/
     ├── main.py                 # Aplicación y endpoints de estado
     ├── api/
     │   ├── router.py           # Registro central de rutas
-    │   └── routes/nasa.py      # Validación y endpoint NASA
+    │   └── routes/            # NASA, usuarios, parcelas y observaciones
     ├── core/
     │   ├── config.py           # Configuración de aplicación y NASA POWER
     │   ├── logging.py          # Formato y nivel de logs
@@ -31,8 +31,9 @@ backend/
     │   ├── connection.py       # DATABASE_URL y motor SQLAlchemy
     │   ├── session.py          # Sesiones para rutas y servicios
     │   └── models/            # Los 14 modelos del esquema del MVP
-    └── services/nasa/
-        └── power_service.py    # Cliente HTTP de NASA POWER
+    └── services/
+        ├── auth.py             # Validación de identidad con Supabase Auth
+        └── nasa/               # Cliente POWER y normalización de observaciones
 ```
 
 Las migraciones están en `../supabase/migrations/`: la inicial crea `plot` y `nasa_observation`; `20261029043058_complete_agroorbit_schema.sql` agrega el resto del esquema.
@@ -83,7 +84,22 @@ Las claves foráneas, restricciones e índices impiden duplicados de observacion
 
 El catálogo empieza vacío: no se insertan parámetros ni reglas agronómicas sin fuente verificable. `crop_requirement.value` almacena un objeto JSON; el servicio que cargue el catálogo debe validar la estructura de cada criterio y su unidad. Las migraciones habilitan RLS en las 14 tablas y retiran permisos directos de `anon` y `authenticated`. FastAPI accede mediante PostgreSQL; la cadena de conexión debe permanecer solo en el backend. Antes de exponer datos de varios usuarios, la API deberá autenticar cada solicitud y comprobar que el usuario es dueño de la parcela.
 
-La dependencia `get_db_session` de `app.database.session` entrega una sesión por solicitud. La ruta o el servicio confirma escrituras con `session.commit()`. El servicio POWER actual solo devuelve datos; la normalización y persistencia de su respuesta vendrán cuando se acuerden las unidades y el tratamiento de valores faltantes.
+La dependencia `get_db_session` de `app.database.session` entrega una sesión por solicitud. La ruta o el servicio confirma escrituras con `session.commit()`. La ruta pública `GET /api/nasa/power` sigue siendo de solo lectura; la persistencia se realiza por parcela mediante el nuevo `POST` descrito abajo.
+
+## Identidad, parcelas y observaciones
+
+Configura `SUPABASE_URL` y `SUPABASE_PUBLISHABLE_KEY` en `backend/.env`. Las rutas privadas comprueban cada token de usuario con Supabase Auth (`/auth/v1/user`); el cliente nunca decide el `user_id` de una parcela. El frontend puede iniciar sesión con Supabase Auth, pero accede a las tablas solo a través de esta API. `DATABASE_URL` queda únicamente en `backend/.env`.
+
+Con un token de usuario válido, el primer flujo es:
+
+1. `POST /api/users/me` con `{"display_name":"Nombre"}` para crear el perfil `app_user`; `GET /api/users/me` permite leerlo.
+2. `POST /api/plots` con `name`, `latitude` y `longitude` para crear una parcela. `GET /api/plots` y `GET /api/plots/{plot_id}` solo muestran parcelas del usuario autenticado.
+3. `POST /api/plots/{plot_id}/nasa/power?start_date=20240101&end_date=20240103` consulta NASA con las coordenadas de la parcela y guarda las observaciones. La respuesta indica cuántas filas se insertaron, cuántas ya existían y cuántos valores faltantes se omitieron. Repetir la consulta no duplica filas.
+4. `GET /api/plots/{plot_id}/nasa/observations` lee las observaciones guardadas. Admite `limit` entre 1 y 1000.
+
+La versión guardada en `dataset_version` es la versión de la **API POWER** comunicada en su respuesta (`api-v...`), no una versión de cada fuente meteorológica subyacente. Cada fecha diaria se guarda como medianoche UTC para identificar el día; POWER entrega las series diarias en tiempo solar local por defecto. Los valores iguales al `fill_value` de NASA, no numéricos o no finitos se omiten. Las unidades se toman de los metadatos recibidos, sin inventarlas.
+
+La propuesta de contrato para `POST /api/recommendations` está en [docs/recommendations-contract.md](docs/recommendations-contract.md). Se requiere revisión con Luis y Milene antes de activar esa ruta.
 
 ## Consultar NASA POWER
 
@@ -121,3 +137,5 @@ python -m unittest discover -s tests -v
 Las pruebas automáticas usan una respuesta simulada para verificar la ruta NASA POWER sin depender de la red. Para comprobar la conexión real, inicia Uvicorn y ejecuta la consulta del ejemplo anterior.
 
 `tests/test_database.py` usa SQLite temporal para comprobar modelos, relaciones, restricciones y un flujo completo de persistencia. No sustituye la verificación de la migración en Supabase.
+
+`tests/test_api_flow.py` comprueba el flujo usuario → parcela → observaciones, el aislamiento entre usuarios y la ausencia de duplicados. Usa una respuesta POWER simulada; la comprobación contra Supabase real requiere las variables de entorno del proyecto y un token de usuario válido.
