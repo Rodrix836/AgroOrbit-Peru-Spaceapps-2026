@@ -9,9 +9,16 @@ from unittest.mock import AsyncMock, patch
 import httpx
 from pydantic import ValidationError
 
-from app.core.config import POWER_PARAMETERS, Settings
+from app.core.config import (
+    POWER_BASE_URL,
+    POWER_COMMUNITY,
+    POWER_PARAMETERS,
+    POWER_TIMEOUT_SECONDS,
+    Settings,
+)
 from app.core.exceptions import ExternalServiceError, ExternalServiceTimeoutError
 from app.main import app
+from app.services.nasa.power_service import PowerService
 
 
 class SettingsTests(unittest.TestCase):
@@ -26,6 +33,11 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(config.nasa_power_timeout, 30)
         self.assertTrue(config.nasa_power_base_url.startswith("https://"))
         self.assertEqual(len(POWER_PARAMETERS), 7)
+
+    def test_backwards_compatibility_constants(self) -> None:
+        self.assertEqual(POWER_COMMUNITY, "AG")
+        self.assertEqual(POWER_TIMEOUT_SECONDS, 30)
+        self.assertTrue(POWER_BASE_URL.startswith("https://"))
 
     def test_environment_overrides(self) -> None:
         with patch.dict(
@@ -55,6 +67,24 @@ class SettingsTests(unittest.TestCase):
                 Settings(nasa_power_timeout=0, _env_file=None)
 
 
+class PowerServiceUnitTests(unittest.TestCase):
+    def test_extract_upstream_error_with_list_detail(self) -> None:
+        response = httpx.Response(
+            422,
+            json={"detail": [{"loc": ["query", "latitude"], "msg": "Input should be >= -90"}]},
+        )
+        msg = PowerService._extract_upstream_error(response)
+        self.assertIn("Input should be >= -90", msg)
+
+    def test_extract_upstream_error_with_messages(self) -> None:
+        response = httpx.Response(
+            422,
+            json={"messages": ["Fecha inicial posterior a final"]},
+        )
+        msg = PowerService._extract_upstream_error(response)
+        self.assertEqual(msg, "Fecha inicial posterior a final")
+
+
 class ApiTests(unittest.IsolatedAsyncioTestCase):
     async def test_health(self) -> None:
         async with httpx.AsyncClient(
@@ -64,6 +94,23 @@ class ApiTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"status": "ok"})
+
+    async def test_root(self) -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["project"], "AgroOrbit Perú")
+
+    async def test_docs(self) -> None:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as client:
+            response = await client.get("/docs")
+
+        self.assertEqual(response.status_code, 200)
 
     async def test_power_route_keeps_response_shape(self) -> None:
         sample = {"T2M": {"20240101": 27.68}}

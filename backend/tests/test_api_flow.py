@@ -124,3 +124,51 @@ class ApiFlowTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             {item["unit"] for item in observations.json()}, {"C", "mm/day"}
         )
+
+    async def test_unowned_plot_power_fetch_rejected(self) -> None:
+        await self.client.post("/api/users/me", json={"display_name": "Carlos"})
+        plot = await self.client.post(
+            "/api/plots",
+            json={"name": "Parcela privada", "latitude": -6.0, "longitude": -79.0},
+        )
+        self.assertEqual(plot.status_code, 201)
+        plot_id = plot.json()["id"]
+
+        # Intento de acceso desde otra identidad
+        self.identity = uuid4()
+        url = f"/api/plots/{plot_id}/nasa/power?start_date=20240101&end_date=20240102"
+        response = await self.client.post(url)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "Parcela no encontrada.")
+
+    async def test_float_and_nan_fill_values_are_skipped(self) -> None:
+        user = await self.client.post("/api/users/me", json={"display_name": "Lucia"})
+        plot = await self.client.post(
+            "/api/plots",
+            json={"name": "Parcela sur", "latitude": -12.0, "longitude": -77.0},
+        )
+        plot_id = plot.json()["id"]
+
+        payload = {
+            "header": {"api": {"version": "v2.10.1"}, "fill_value": -999.0},
+            "parameters": {"T2M": {"units": "C"}},
+            "properties": {"parameter": {
+                "T2M": {
+                    "20240101": 24.0,
+                    "20240102": -999.0,
+                    "20240103": float("nan"),
+                    "20240104": None,
+                },
+            }},
+        }
+        url = f"/api/plots/{plot_id}/nasa/power?start_date=20240101&end_date=20240104"
+        with patch(
+            "app.api.routes.plot_nasa.power_service.get_daily_payload",
+            new_callable=AsyncMock,
+        ) as fetch:
+            fetch.return_value = payload
+            resp = await self.client.post(url)
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["inserted"], 1)
+        self.assertEqual(resp.json()["missing_skipped"], 3)
