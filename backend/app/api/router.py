@@ -2,4 +2,7 @@
 
 from fastapi import APIRouter
 
+from app.api.routes import nasa
+
 api_router = APIRouter(prefix="/api")
+api_router.include_router(nasa.router)
