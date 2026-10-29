@@ -1,18 +1,14 @@
 """Cliente asíncrono para la API diaria de NASA POWER."""
 
+import logging
 from typing import Any
 
 import httpx
 
 from app.core.config import POWER_PARAMETERS, settings
+from app.core.exceptions import ExternalServiceError, ExternalServiceTimeoutError
 
-
-class PowerServiceError(Exception):
-    """Error al consultar o interpretar la respuesta de NASA POWER."""
-
-    def __init__(self, message: str, status_code: int = 502) -> None:
-        super().__init__(message)
-        self.status_code = status_code
+logger = logging.getLogger(__name__)
 
 
 async def get_daily_power_data(
@@ -33,16 +29,17 @@ async def get_daily_power_data(
         "format": "JSON",
     }
 
+    logger.info("Consultando NASA POWER")
     try:
         async with httpx.AsyncClient(timeout=settings.nasa_power_timeout) as client:
             response = await client.get(settings.nasa_power_base_url, params=params)
             response.raise_for_status()
     except httpx.TimeoutException as exc:
-        raise PowerServiceError(
-            "NASA POWER agotó el tiempo de espera.", status_code=504
-        ) from exc
+        logger.warning("Timeout consultando NASA POWER")
+        raise ExternalServiceTimeoutError("NASA POWER agotó el tiempo de espera.") from exc
     except httpx.HTTPStatusError as exc:
         upstream_status = exc.response.status_code
+        logger.warning("NASA POWER devolvió HTTP %s", upstream_status)
         if upstream_status == 422:
             status_code = 422
         elif upstream_status == 429:
@@ -59,23 +56,28 @@ async def get_daily_power_data(
             details = "; ".join(item for item in upstream_messages if isinstance(item, str))
             if details:
                 message = f"{message} {details[:300]}"
-        raise PowerServiceError(
+        raise ExternalServiceError(
             message, status_code=status_code
         ) from exc
     except httpx.RequestError as exc:
-        raise PowerServiceError("No se pudo conectar con NASA POWER.") from exc
+        logger.error("Error comunicándose con NASA POWER")
+        raise ExternalServiceError("No se pudo conectar con NASA POWER.") from exc
 
     try:
         payload = response.json()
     except ValueError as exc:
-        raise PowerServiceError("NASA POWER devolvió una respuesta JSON inválida.") from exc
+        logger.error("NASA POWER devolvió JSON inválido")
+        raise ExternalServiceError("NASA POWER devolvió una respuesta JSON inválida.") from exc
 
     if not isinstance(payload, dict):
-        raise PowerServiceError("NASA POWER devolvió una respuesta inesperada.")
+        logger.error("NASA POWER devolvió una respuesta inesperada")
+        raise ExternalServiceError("NASA POWER devolvió una respuesta inesperada.")
 
     properties = payload.get("properties")
     parameters = properties.get("parameter") if isinstance(properties, dict) else None
     if not isinstance(parameters, dict) or not parameters:
-        raise PowerServiceError("NASA POWER no devolvió datos climáticos para la consulta.")
+        logger.error("NASA POWER no devolvió datos climáticos")
+        raise ExternalServiceError("NASA POWER no devolvió datos climáticos para la consulta.")
 
+    logger.info("Consulta NASA POWER completada")
     return parameters

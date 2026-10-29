@@ -5,7 +5,8 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services.nasa.power_service import PowerServiceError, get_daily_power_data
+from app.core.exceptions import ExternalServiceError
+from app.services.nasa.power_service import get_daily_power_data
 
 router = APIRouter(prefix="/nasa", tags=["NASA"])
 
@@ -39,7 +40,7 @@ async def get_power(
 
     try:
         data = await get_daily_power_data(latitude, longitude, start_date, end_date)
-    except PowerServiceError as exc:
+    except ExternalServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     return {
