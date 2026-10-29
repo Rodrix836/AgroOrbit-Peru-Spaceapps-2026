@@ -1,0 +1,13 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+.idea/
+.vscode/
+node_modules/
+dist/
+build/
+coverage/
+*.tif
+*.tiff
