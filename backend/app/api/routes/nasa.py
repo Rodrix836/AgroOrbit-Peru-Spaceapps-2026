@@ -5,7 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.services.nasa.power_service import PowerServiceError, get_daily_power_data
+from app.services.nasa.power_service import get_daily_power_data
 
 router = APIRouter(prefix="/nasa", tags=["NASA"])
 
@@ -37,10 +37,7 @@ async def get_power(
             detail="start_date no puede ser posterior a end_date.",
         )
 
-    try:
-        data = await get_daily_power_data(latitude, longitude, start_date, end_date)
-    except PowerServiceError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    data = await get_daily_power_data(latitude, longitude, start_date, end_date)
 
     return {
         "source": "NASA POWER",
