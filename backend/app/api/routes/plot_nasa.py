@@ -8,7 +8,6 @@ from sqlalchemy import select
 
 from app.api.deps import AuthId, DbSession, owned_plot
 from app.api.routes.nasa import _parse_power_date
-from app.core.exceptions import ExternalServiceError
 from app.database.models.nasa_observation import NasaObservation
 from app.schemas.nasa import ObservationRead
 from app.services.nasa.observation_service import normalize_power_payload, save_observations
@@ -28,13 +27,10 @@ async def fetch_and_save_power(
     plot = owned_plot(session, auth_id, plot_id)
     if _parse_power_date(start_date, "start_date") > _parse_power_date(end_date, "end_date"):
         raise HTTPException(status_code=422, detail="start_date no puede superar end_date.")
-    try:
-        payload = await power_service.get_daily_payload(
-            float(plot.latitude), float(plot.longitude), start_date, end_date
-        )
-        rows, missing = normalize_power_payload(payload, plot.id)
-    except ExternalServiceError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
+    payload = await power_service.get_daily_payload(
+        float(plot.latitude), float(plot.longitude), start_date, end_date
+    )
+    rows, missing = normalize_power_payload(payload, plot.id)
     inserted = save_observations(session, rows)
     return {
         "plot_id": plot.id,

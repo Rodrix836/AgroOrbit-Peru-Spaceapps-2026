@@ -1,6 +1,6 @@
 # Backend de AgroOrbit Perú
 
-API inicial de AgroOrbit Perú para consultar datos agroclimáticos diarios de NASA POWER a partir de coordenadas y fechas. La base de datos ya contiene el esquema del MVP; la ruta POWER todavía no guarda automáticamente sus respuestas.
+API inicial de AgroOrbit Perú para consultar datos agroclimáticos diarios de NASA POWER a partir de coordenadas y fechas. Permite registrar usuarios y parcelas privadas, consultar POWER por parcela y guardar observaciones sin duplicarlas.
 
 ## Tecnología
 
@@ -22,7 +22,9 @@ backend/
     ├── main.py                 # Aplicación y endpoints de estado
     ├── api/
     │   ├── router.py           # Registro central de rutas
+    │   ├── deps.py             # AuthId, DbSession y comprobación owned_plot
     │   └── routes/            # NASA, usuarios, parcelas y observaciones
+    ├── schemas/               # Contratos Pydantic de usuario, parcela y NASA
     ├── core/
     │   ├── config.py           # Configuración de aplicación y NASA POWER
     │   ├── logging.py          # Formato y nivel de logs
@@ -59,6 +61,37 @@ uvicorn app.main:app --reload
 ```
 
 Abre `http://127.0.0.1:8000/docs` para usar Swagger. Los endpoints `GET /` y `GET /health` permiten comprobar que la API está activa.
+
+Para recibir datos del ESP32 desde otro equipo en la misma red local, inicia el backend con:
+
+```powershell
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+El ESP32 debe usar `http://<IP-local-del-equipo>:8000` como dirección del backend.
+`0.0.0.0` es la dirección de escucha del servidor. La recepción de lecturas del kit
+se implementará en la etapa de sensores; este comando prepara el acceso por red.
+
+### CORS y errores controlados
+
+`CORS_ORIGINS` define los orígenes del frontend autorizados para acceder desde el
+navegador. Usa una lista JSON en `backend/.env`, por ejemplo:
+
+```dotenv
+CORS_ORIGINS=["http://localhost:5173","http://192.168.1.10:5173"]
+```
+
+El valor predeterminado es `["http://localhost:5173"]`. Cada origen incluye protocolo,
+host y puerto; usa `[]` para deshabilitar el acceso desde otros orígenes.
+Se permiten los métodos HTTP y los encabezados necesarios para enviar JSON y
+`Authorization: Bearer`. Las rutas privadas siguen validando el token de Supabase
+y la propiedad de la parcela. El ESP32 no depende de CORS.
+
+Los errores `AgroOrbitError` y `ExternalServiceError` se registran con logging y
+responden `{"detail":"..."}` con el `status_code` de la excepción. El valor
+predeterminado de `AgroOrbitError` es 500; el de `ExternalServiceError`, 502;
+los tiempos de espera externos usan 504. Las validaciones y los errores de
+autenticación conservan sus respuestas actuales.
 
 La configuración se lee de variables de entorno o de `backend/.env`, si existe. Puedes copiar `.env.example` a `.env` para personalizarla; `.env` está ignorado por Git. Sin ese archivo, funcionan los valores predeterminados. `NASA_POWER_TIMEOUT` controla el tiempo máximo de espera de la consulta externa, en segundos, y debe ser mayor que cero. Su valor predeterminado es 30.
 
@@ -151,3 +184,7 @@ Las pruebas automáticas usan una respuesta simulada para verificar la ruta NASA
 `tests/test_database.py` usa SQLite temporal para comprobar modelos, relaciones, restricciones y un flujo completo de persistencia. No sustituye la verificación de la migración en Supabase.
 
 `tests/test_api_flow.py` comprueba el flujo usuario → parcela → observaciones, el aislamiento entre usuarios y la ausencia de duplicados. Usa una respuesta POWER simulada; la comprobación contra Supabase real requiere las variables de entorno del proyecto y un token de usuario válido.
+
+`tests/test_api_core.py` comprueba CORS (configuración, preflight y respuestas de
+error), los códigos y logs del manejador global, y el acceso privado tras centralizar
+las dependencias. Usa SQLite en memoria, Auth y NASA simulados.
