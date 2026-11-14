@@ -63,6 +63,8 @@ La configuración se lee de variables de entorno o de `backend/.env`, si existe.
 
 `APP_NAME`, `APP_VERSION`, `APP_ENV` y `DEBUG` configuran la aplicación. `NASA_POWER_BASE_URL`, `NASA_POWER_COMMUNITY` y `NASA_POWER_TIMEOUT` configuran la consulta externa. Los registros de la aplicación incluyen fecha, nivel, módulo y mensaje.
 
+Define `CORS_ORIGINS` en `backend/.env` como una lista JSON de los orígenes del frontend, por ejemplo `["http://localhost:3000"]`. En producción usa `APP_ENV=production` y el origen HTTPS del frontend. Si una ruta necesita PostgreSQL y falta `DATABASE_URL`, devuelve HTTP 503. En producción el cuerpo incluye un mensaje genérico.
+
 ## Base de datos Supabase
 
 1. Crea un proyecto Supabase para desarrollo y copia su cadena PostgreSQL desde **Connect**. Usa conexión directa si tu entorno admite IPv6; si solo admite IPv4, elige el pooler en modo **session**. No construyas la dirección del pooler manualmente.

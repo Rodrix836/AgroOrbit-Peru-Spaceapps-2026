@@ -8,6 +8,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.engine import URL, make_url
 
+from app.core.exceptions import ConfigurationError
+
 
 class DatabaseSettings(BaseSettings):
     """Lee la cadena de conexión sin exigirla al iniciar la API."""
@@ -42,5 +44,8 @@ def get_engine() -> Engine:
 
     database_url = DatabaseSettings().database_url
     if not database_url:
-        raise RuntimeError("Falta DATABASE_URL para conectar con Supabase PostgreSQL")
+        raise ConfigurationError(
+            "Falta DATABASE_URL para conectar con Supabase PostgreSQL",
+            status_code=503,
+        )
     return make_engine(database_url)
