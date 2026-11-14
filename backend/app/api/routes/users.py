@@ -1,32 +1,13 @@
 """Perfil privado asociado a la identidad autenticada."""
 
-from datetime import datetime
-from typing import Annotated
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, HTTPException
 from sqlalchemy import select
-from sqlalchemy.orm import Session
 
+from app.api.deps import AuthId, DbSession
 from app.database.models.user import AppUser
-from app.database.session import get_db_session
-from app.services.auth import get_current_auth_user_id
+from app.schemas.user import UserCreate, UserRead
 
 router = APIRouter(prefix="/users", tags=["Usuarios"])
-AuthId = Annotated[UUID, Depends(get_current_auth_user_id)]
-DbSession = Annotated[Session, Depends(get_db_session)]
-
-
-class UserCreate(BaseModel):
-    display_name: str = Field(min_length=1, max_length=120)
-
-
-class UserRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: UUID
-    display_name: str
-    created_at: datetime
 
 
 @router.post("/me", response_model=UserRead)
