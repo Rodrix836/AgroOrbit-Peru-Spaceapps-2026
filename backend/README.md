@@ -189,6 +189,47 @@ Las pruebas automáticas usan una respuesta simulada para verificar la ruta NASA
 error), los códigos y logs del manejador global, y el acceso privado tras centralizar
 las dependencias. Usa SQLite en memoria, Auth y NASA simulados.
 
+## Catálogo público de cultivos
+
+`GET /api/crops` devuelve los cultivos activos ordenados por nombre (200, o `[]`
+si el catálogo está vacío). `GET /api/crops/{crop_id}` incluye sus requisitos,
+el JSON original de cada criterio, la fuente de cada requisito y `cycle_source`.
+Un cultivo inexistente o inactivo responde 404 `Cultivo no encontrado.`; un UUID
+inválido responde 422.
+
+Estas rutas son públicas y de solo lectura: el catálogo agronómico no es un dato
+privado y no requiere token. El acceso a PostgreSQL sigue siendo exclusivo del
+backend. La API no crea ni modifica cultivos ni requisitos. Otro integrante del
+equipo debe cargar el catálogo y sus fuentes verificables (INIA, FAO, SENAMHI);
+la identidad de la persona responsable queda por coordinar.
+
+`tests/test_crops.py` usa únicamente datos ficticios en SQLite en memoria y
+verifica también que el detalle carga requisitos y fuentes en lotes con selectinload.
+
+## Campañas privadas
+
+Todas las rutas requieren Bearer de Supabase y propiedad de la parcela:
+
+| Método | Ruta | Respuesta |
+| --- | --- | --- |
+| POST | `/api/plots/{plot_id}/crop-cycles` | 201 con la campaña creada |
+| GET | `/api/plots/{plot_id}/crop-cycles` | 200 con historial por sowing_date descendente |
+| PATCH | `/api/plots/{plot_id}/crop-cycles/{cycle_id}` | 200 con la campaña actualizada |
+
+El POST recibe crop_id, sowing_date, harvest_date opcional y status (active,
+planned o finished). origin se fija a farmer; enviarlo desde el cliente produce
+422. El PATCH acepta solo status y/o harvest_date y valida el resultado junto
+con los valores existentes. Para finalizar, se exige harvest_date; no puede
+ser anterior a sowing_date. El historial incluye crop_code y crop_name.
+
+Las fechas o cuerpos inválidos devuelven 422. Una parcela ajena/inexistente,
+un cultivo inexistente/inactivo al crear o una campaña fuera de esa parcela
+responden 404. Una segunda campaña activa responde 409: La parcela ya tiene
+una campaña activa. La validación previa y el índice único protegen también
+las activaciones concurrentes; los conflictos revierten la transacción.
+
+Las pruebas de tests/test_crop_cycles.py usan SQLite y cultivos ficticios.
+
 ## Kit ESP32: registro y lecturas
 
 Antes de usar esta etapa en Supabase, mamisatow debe aplicar la migración
