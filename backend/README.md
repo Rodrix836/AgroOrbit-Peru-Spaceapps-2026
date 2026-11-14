@@ -229,3 +229,66 @@ una campaña activa. La validación previa y el índice único protegen también
 las activaciones concurrentes; los conflictos revierten la transacción.
 
 Las pruebas de tests/test_crop_cycles.py usan SQLite y cultivos ficticios.
+
+## Kit ESP32: registro y lecturas
+
+Antes de usar esta etapa en Supabase, mamisatow debe aplicar la migración
+20261114033000_add_device_secret_hash.sql. Los kits anteriores quedan con hash
+nulo y no se autentican; se debe coordinar la asignación de una clave. La API
+no aplica migraciones automáticamente.
+
+| Método | Ruta | Autenticación | Códigos |
+| --- | --- | --- | --- |
+| POST | `/api/plots/{plot_id}/devices` | Bearer, dueño | 201, 401, 404, 409, 422 |
+| GET | `/api/plots/{plot_id}/devices` | Bearer, dueño | 200, 401, 404, 422 |
+| POST | `/api/devices/readings` | X-Device-Key, sin Bearer | 201, 401, 422 |
+| GET | `/api/plots/{plot_id}/sensors/readings` | Bearer, dueño | 200, 401, 404, 422 |
+
+1. Inicia desde backend con `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
+2. Con el token del dueño, registra el kit mediante POST devices con
+   `{"external_id":"kit-lote4b-01","model":"ESP32 HW-390 DS18B20"}`.
+3. Copia el campo secret: se devuelve solo en esa respuesta. La base guarda su
+   SHA-256 y el listado no expone el secreto ni el hash. Un external_id duplicado
+   devuelve 409. Conserva la clave fuera de Git y configúrala en el kit.
+4. El ESP32 envía el external_id y readings a `/api/devices/readings` con
+   `X-Device-Key: <clave>`. Las claves incorrectas, ausentes y los kits inexistentes,
+   inactivos o sin hash reciben el mismo 401.
+5. Consulta el historial privado con `?variable=soil_moisture&limit=100`.
+   limit admite 1-1000; por defecto 100. Las lecturas más recientes aparecen primero.
+
+Cada elemento de readings contiene variable, raw_value, calibrated_value, unit
+ y quality_flag (por defecto ok). unit es la unidad del valor calibrado. Se guarda
+el crudo para poder recalibrar el historial; el backend conserva el valor calibrado
+por el ESP32 sin inventar una calibración nueva.
+
+- soil_moisture: ADC entero 0-4095 y porcentaje calibrado 0-100, unit `%`.
+  Más agua suele dar un ADC menor; el kit midió 2921-2927 al aire.
+- soil_temperature: ambos valores entre -10 y 70, unit `°C`. Se rechazan los
+  códigos de error -127 y 85 del DS18B20.
+- quality_flag admite ok, clamped_dry y clamped_wet. Las lecturas recortadas a
+  0 o 100 % se guardan igual. Si falla la temperatura, envía solo soil_moisture.
+- readings vacío, variables desconocidas/repetidas y valores no válidos dan 422.
+- observed_at es opcional. Si se envía, debe incluir zona horaria y no superar
+  cinco minutos en el futuro. Se normaliza a UTC. Si falta, se usa la hora UTC
+  del servidor al segundo. Cada variable ocupa una fila. Repetir una medición
+  con el mismo instante devuelve 201 con inserted=0 y already_present por variable;
+  conserva observed_at al reintentar para evitar registrar un instante diferente.
+
+Desde backend, prueba el transporte sin hardware con un kit de prueba registrado:
+
+```powershell
+python scripts/simular_esp32.py --url http://127.0.0.1:8000/api/devices/readings --key <clave> --external-id kit-lote4b-01 --escenario riego --cantidad 10
+```
+
+Escenarios: aire, seco, riego y sin_temp. Todas las mediciones del simulador son
+ficticias y sirven para probar el transporte; no son calibraciones del kit ni
+consejos agronómicos. Diez muestras de riego generan veinte filas, una por variable.
+Comprueba el resultado en GET sensors/readings. La prueba automática
+`tests/test_esp32_e2e.py` arranca Uvicorn en un puerto local temporal, registra kits,
+ejecuta el simulador y lee el historial usando exclusivamente SQLite y Auth simulado.
+
+Para conectar el kit real, Luis necesita la URL accesible del backend (por ejemplo
+`http://<IP-del-equipo>:8000/api/devices/readings` en la misma red), su external_id
+y la clave devuelta al registrar ese kit. localhost en el ESP32 apunta al propio
+kit, por lo que debe usar la IP del equipo servidor. La URL definitiva y el registro
+del kit real se coordinan después de aplicar la migración.
