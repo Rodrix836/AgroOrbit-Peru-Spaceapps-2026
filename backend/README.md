@@ -205,3 +205,27 @@ la identidad de la persona responsable queda por coordinar.
 
 `tests/test_crops.py` usa únicamente datos ficticios en SQLite en memoria y
 verifica también que el detalle carga requisitos y fuentes en lotes con selectinload.
+
+## Campañas privadas
+
+Todas las rutas requieren Bearer de Supabase y propiedad de la parcela:
+
+| Método | Ruta | Respuesta |
+| --- | --- | --- |
+| POST | `/api/plots/{plot_id}/crop-cycles` | 201 con la campaña creada |
+| GET | `/api/plots/{plot_id}/crop-cycles` | 200 con historial por sowing_date descendente |
+| PATCH | `/api/plots/{plot_id}/crop-cycles/{cycle_id}` | 200 con la campaña actualizada |
+
+El POST recibe crop_id, sowing_date, harvest_date opcional y status (active,
+planned o finished). origin se fija a farmer; enviarlo desde el cliente produce
+422. El PATCH acepta solo status y/o harvest_date y valida el resultado junto
+con los valores existentes. Para finalizar, se exige harvest_date; no puede
+ser anterior a sowing_date. El historial incluye crop_code y crop_name.
+
+Las fechas o cuerpos inválidos devuelven 422. Una parcela ajena/inexistente,
+un cultivo inexistente/inactivo al crear o una campaña fuera de esa parcela
+responden 404. Una segunda campaña activa responde 409: La parcela ya tiene
+una campaña activa. La validación previa y el índice único protegen también
+las activaciones concurrentes; los conflictos revierten la transacción.
+
+Las pruebas de tests/test_crop_cycles.py usan SQLite y cultivos ficticios.
