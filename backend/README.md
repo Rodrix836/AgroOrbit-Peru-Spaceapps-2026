@@ -188,3 +188,20 @@ Las pruebas automáticas usan una respuesta simulada para verificar la ruta NASA
 `tests/test_api_core.py` comprueba CORS (configuración, preflight y respuestas de
 error), los códigos y logs del manejador global, y el acceso privado tras centralizar
 las dependencias. Usa SQLite en memoria, Auth y NASA simulados.
+
+## Catálogo público de cultivos
+
+`GET /api/crops` devuelve los cultivos activos ordenados por nombre (200, o `[]`
+si el catálogo está vacío). `GET /api/crops/{crop_id}` incluye sus requisitos,
+el JSON original de cada criterio, la fuente de cada requisito y `cycle_source`.
+Un cultivo inexistente o inactivo responde 404 `Cultivo no encontrado.`; un UUID
+inválido responde 422.
+
+Estas rutas son públicas y de solo lectura: el catálogo agronómico no es un dato
+privado y no requiere token. El acceso a PostgreSQL sigue siendo exclusivo del
+backend. La API no crea ni modifica cultivos ni requisitos. Otro integrante del
+equipo debe cargar el catálogo y sus fuentes verificables (INIA, FAO, SENAMHI);
+la identidad de la persona responsable queda por coordinar.
+
+`tests/test_crops.py` usa únicamente datos ficticios en SQLite en memoria y
+verifica también que el detalle carga requisitos y fuentes en lotes con selectinload.
