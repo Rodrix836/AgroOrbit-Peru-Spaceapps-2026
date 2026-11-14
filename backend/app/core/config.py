@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     app_env: str = "development"
     debug: bool = True
+    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
     nasa_power_base_url: str = "https://power.larc.nasa.gov/api/temporal/daily/point"
     nasa_power_community: str = "AG"
