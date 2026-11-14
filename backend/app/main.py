@@ -3,11 +3,15 @@
 from fastapi import FastAPI
 
 from app.api.router import api_router
+from app.core.config import settings
+from app.core.logging import configure_logging
+
+configure_logging(debug=settings.debug)
 
 app = FastAPI(
-    title="AgroOrbit Perú API",
+    title=settings.app_name,
     description="API agroclimática inicial de AgroOrbit Perú.",
-    version="0.1.0",
+    version=settings.app_version,
 )
 app.include_router(api_router)
 
